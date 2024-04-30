@@ -1,0 +1,72 @@
+const mongoose = require('mongoose');
+
+// Schema do Livro
+const livroSchema = new mongoose.Schema({
+  ISBN: String,
+  Editora: String,
+  Título: String,
+  Autor: String,
+  Valor: Number,
+  'Valor Feira': Number,
+  Estoque: Number
+});
+
+// Schema do Cliente
+const clienteSchema = new mongoose.Schema({
+  nome: {
+    type: String,
+    required: true,
+  },
+  cpf: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  telefone: String,
+  cep: String,
+  endereco: String,
+  bairro: String,
+  cidade: String,
+  estado: String,
+});
+
+// Schema da Venda
+const vendaSchema = new mongoose.Schema({
+    cliente: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Cliente' // Referência ao modelo de Cliente
+    },
+    livros: [{
+      livro: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Livro' // Referência ao modelo de Livro
+      },
+      ISBN: String,
+      quantidade: Number,
+      desconto: Number, // Desconto em porcentagem
+      subtotal: Number // Subtotal do livro com desconto
+    }],
+    total: Number, // Valor total da venda
+    timestamp: {
+      type: Date,
+      default: Date.now // Timestamp da venda
+    }
+    // Outras informações relevantes da venda, se houver
+  });
+
+// Modelo do Livro
+const Livro = mongoose.model('Livro', livroSchema);
+
+// Modelo do Cliente
+const Cliente = mongoose.model('Cliente', clienteSchema);
+
+// Modelo da Venda
+const Venda = mongoose.model('Venda', vendaSchema);
+
+// Exportar os modelos
+module.exports = { Livro, Cliente, Venda };
