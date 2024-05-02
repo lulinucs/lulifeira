@@ -7,8 +7,6 @@ const xlsx = require('xlsx');
 const cors = require('cors'); // Importe o pacote cors
 const bodyParser = require('body-parser');
 
-require('dotenv').config();
-
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,17 +15,17 @@ app.use(cors());
 
 const { Cliente, Livro, Venda } = require('./models');
 
-// Conectar ao MongoDB Atlas
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect('mongodb://127.0.0.1:27017/lulifeira')
   .then(() => {
-    console.log('Conectado ao MongoDB Atlas');
+    console.log('Conectado ao MongoDB local');
     app.listen(PORT, () => {
       console.log(`Servidor rodando na porta ${PORT}`);
     });
   })
   .catch((error) => {
-    console.error('Erro ao conectar ao MongoDB Atlas:', error);
+    console.error('Erro ao conectar ao MongoDB local:', error);
   });
+
 
 // Middleware para lidar com o upload de arquivos
 app.use(fileUpload());
