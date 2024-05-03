@@ -6,7 +6,8 @@ const fileUpload = require('express-fileupload');
 const xlsx = require('xlsx');
 const cors = require('cors'); // Importe o pacote cors
 const bodyParser = require('body-parser');
-
+const https = require('https');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,7 +19,11 @@ const { Cliente, Livro, Venda } = require('./models');
 mongoose.connect('mongodb://127.0.0.1:27017/lulifeira')
   .then(() => {
     console.log('Conectado ao MongoDB local');
-    app.listen(PORT, () => {
+    const server = https.createServer({
+      key: fs.readFileSync('./sistemafeira/.cert/key.pem'),
+      cert: fs.readFileSync('./sistemafeira/.cert/cert.pem')
+    }, app);
+    server.listen(PORT, () => {
       console.log(`Servidor rodando na porta ${PORT}`);
     });
   })
@@ -29,6 +34,7 @@ mongoose.connect('mongodb://127.0.0.1:27017/lulifeira')
 
 // Middleware para lidar com o upload de arquivos
 app.use(fileUpload());
+
 
 // Rota para upload de arquivo de estoque
 app.post('/adicionar-estoque', async (req, res) => {
@@ -390,6 +396,89 @@ app.put('/livros/:id', async (req, res) => {
   }
 });
 
+// Rota para obter estatísticas das vendas dentro de um período de datas
+app.post('/relatorio-vendas', async (req, res) => {
+  try {
+    // Extrair as datas de início e fim do corpo da solicitação
+    const { dataInicio, dataFim } = req.body;
+
+    // Converter as datas para objetos Date
+    const dataInicioDate = new Date(dataInicio);
+    const dataFimDate = new Date(dataFim);
+
+    // Consultar o banco de dados para obter as estatísticas das vendas dentro do período fornecido
+    const relatorioVendas = await Venda.aggregate([
+      {
+        $match: {
+          timestamp: {
+            $gte: dataInicioDate,
+            $lte: dataFimDate
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalVendas: { $sum: 1 },
+          totalProdutosVendidos: { $sum: { $sum: "$livros.quantidade" } },
+          valorTotalVendas: { $sum: "$total" },
+          ticketMedio: { $avg: "$total" }
+          // Adicione outras estatísticas desejadas aqui
+        }
+      }
+    ]);
+
+    // Verificar se há dados disponíveis
+    if (relatorioVendas.length === 0) {
+      return res.status(404).json({ error: 'Nenhuma venda encontrada dentro do período especificado' });
+    }
+
+    // Retornar as estatísticas das vendas
+    res.json(relatorioVendas[0]); // O resultado do aggregate é um array, então pegamos o primeiro elemento
+  } catch (error) {
+    console.error('Erro ao gerar o relatório de vendas:', error);
+    res.status(500).json({ error: 'Erro ao gerar o relatório de vendas' });
+  }
+});
+
+app.post('/relatorio-livros-vendidos', async (req, res) => {
+  try {
+    const { dataInicio, dataFim } = req.body;
+
+    // Converter as datas para objetos Date ajustados para o fuso horário UTC
+    const dataInicioTimestamp = new Date(dataInicio);
+    const dataFimTimestamp = new Date(dataFim);
+
+    // Consultar o banco de dados para obter todos os livros vendidos no período fornecido
+    const vendas = await Venda.find({
+      timestamp: {
+        $gte: dataInicioTimestamp,
+        $lte: dataFimTimestamp
+      }
+    }).populate('livros.livro');
+
+    const livrosVendidos = [];
+
+    // Iterar sobre as vendas e extrair os dados dos livros vendidos
+    vendas.forEach(venda => {
+      venda.livros.forEach(item => {
+        const livroVendido = {
+          ISBN: item.livro.ISBN,
+          Título: item.livro['Título'],
+          Editora: item.livro.Editora,
+          'Valor Vendido': item.subtotal,
+          Quantidade: item.quantidade
+        };
+        livrosVendidos.push(livroVendido);
+      });
+    });
+
+    res.json(livrosVendidos);
+  } catch (error) {
+    console.error('Erro ao gerar o relatório de livros vendidos:', error);
+    res.status(500).json({ error: 'Erro ao gerar o relatório de livros vendidos' });
+  }
+});
 
 
 
