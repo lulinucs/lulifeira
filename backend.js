@@ -20,8 +20,8 @@ mongoose.connect('mongodb://127.0.0.1:27017/lulifeira')
   .then(() => {
     console.log('Conectado ao MongoDB local');
     const server = https.createServer({
-      key: fs.readFileSync('./sistemafeira/.cert/key.pem'),
-      cert: fs.readFileSync('./sistemafeira/.cert/cert.pem')
+      key: fs.readFileSync('./sistemafeira/lulifeirafront/.cert/key.pem'),
+      cert: fs.readFileSync('./sistemafeira/lulifeirafront/.cert/cert.pem')
     }, app);
     server.listen(PORT, () => {
       console.log(`Servidor rodando na porta ${PORT}`);
@@ -34,6 +34,33 @@ mongoose.connect('mongodb://127.0.0.1:27017/lulifeira')
 
 // Middleware para lidar com o upload de arquivos
 app.use(fileUpload());
+
+
+
+// Função para agrupar itens duplicados com mesmo ISBN e mesmo valor de venda
+function agruparLivrosVendidos(livrosVendidos) {
+  const livrosVendidosAgrupados = [];
+  const map = new Map();
+
+  livrosVendidos.forEach(livro => {
+    const { ISBN, 'Valor Vendido': ValorVendido, ...resto } = livro;
+    const chave = `${ISBN}-${ValorVendido}`;
+    if (map.has(chave)) {
+      const itemExistente = map.get(chave);
+      itemExistente.Quantidade += livro.Quantidade;
+    } else {
+      map.set(chave, { ISBN, 'Valor Vendido': ValorVendido, ...resto });
+    }
+  });
+
+  for (const item of map.values()) {
+    livrosVendidosAgrupados.push(item);
+  }
+
+  return livrosVendidosAgrupados;
+}
+
+
 
 
 // Rota para upload de arquivo de estoque
@@ -402,6 +429,10 @@ app.post('/relatorio-vendas', async (req, res) => {
     // Extrair as datas de início e fim do corpo da solicitação
     const { dataInicio, dataFim } = req.body;
 
+    console.log(dataInicio)
+    console.log(dataFim)
+    
+
     // Converter as datas para objetos Date
     const dataInicioDate = new Date(dataInicio);
     const dataFimDate = new Date(dataFim);
@@ -480,7 +511,57 @@ app.post('/relatorio-livros-vendidos', async (req, res) => {
   }
 });
 
+app.post('/relatorio-livros-vendidos-xlsx', async (req, res) => {
+  try {
+    const { dataInicio, dataFim } = req.body;
 
+    // Consultar o banco de dados para obter todos os livros vendidos no período fornecido
+    const vendas = await Venda.find({
+      timestamp: {
+        $gte: dataInicio,
+        $lte: dataFim
+      }
+    }).populate('livros.livro');
+
+    // Extrair os dados dos livros vendidos
+    const livrosVendidos = [];
+    vendas.forEach(venda => {
+      venda.livros.forEach(item => {
+        const livroVendido = {
+          ISBN: item.livro.ISBN,
+          Título: item.livro['Título'],
+          Editora: item.livro.Editora,
+          'Valor Vendido': item.subtotal,
+          Quantidade: item.quantidade
+        };
+        livrosVendidos.push(livroVendido);
+      });
+    });
+
+    // Verificar e agrupar itens duplicados com mesmo ISBN e mesmo valor de venda
+    const livrosVendidosAgrupados = agruparLivrosVendidos(livrosVendidos);
+
+    // Criar uma nova planilha
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(livrosVendidosAgrupados);
+
+    // Adicionar a planilha ao livro
+    xlsx.utils.book_append_sheet(wb, ws, 'Livros Vendidos');
+
+    // Salvar o livro em um arquivo
+    const fileName = `relatorio_livros_vendidos_${Date.now()}.xlsx`;
+    xlsx.writeFile(wb, fileName);
+
+    // Enviar o arquivo xlsx como resposta
+    res.download(fileName, fileName, (err) => {
+      // Remover o arquivo temporário após o download ser concluído ou ocorrer um erro
+      if (err) throw err;
+    });
+  } catch (error) {
+    console.error('Erro ao gerar o relatório de livros vendidos em xlsx:', error);
+    res.status(500).json({ error: 'Erro ao gerar o relatório de livros vendidos em xlsx' });
+  }
+});
 
 
   
